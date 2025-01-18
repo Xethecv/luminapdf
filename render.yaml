@@ -3,12 +3,14 @@ services:
     name: luminapdf
     runtime: python
     buildCommand: pip install -r requirements.txt
-    startCommand: gunicorn app:app
+    startCommand: gunicorn --workers=2 --threads=4 --timeout=120 app:app
     envVars:
       - key: PYTHON_VERSION
         value: 3.12.1
       - key: PORT
         value: 10000
+      - key: PYTHONUNBUFFERED
+        value: "true"
     plan: free
     branch: master
     buildFilter:
