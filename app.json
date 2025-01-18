@@ -1,0 +1,14 @@
+{
+  "name": "LuminaPDF",
+  "description": "A web application to enhance scanned PDF documents",
+  "repository": "",
+  "keywords": ["python", "flask", "pdf", "document-processing"],
+  "buildpacks": [
+    {
+      "url": "heroku/python"
+    },
+    {
+      "url": "https://github.com/heroku/heroku-buildpack-apt"
+    }
+  ]
+}
