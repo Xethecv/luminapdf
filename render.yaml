@@ -2,8 +2,9 @@ services:
   - type: web
     name: luminapdf
     runtime: python
-    buildCommand: pip install -r requirements.txt
-    startCommand: gunicorn --workers=1 --threads=2 --timeout=180 --max-requests=5 app:app
+    buildCommand: |
+      pip install --no-cache-dir -r requirements.txt
+    startCommand: gunicorn --workers=1 --threads=1 --timeout=300 --max-requests=1 --log-level=debug app:app
     envVars:
       - key: PYTHON_VERSION
         value: 3.12.1
@@ -13,8 +14,11 @@ services:
         value: "true"
       - key: MALLOC_TRIM_THRESHOLD_
         value: "65536"
+      - key: PYTHONPATH
+        value: "."
     plan: free
     branch: master
+    autoDeploy: false
     buildFilter:
       paths:
         - requirements.txt
