@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, send_file
+from flask import Flask, render_template, request, send_file, jsonify
 import os
 import logging
 from werkzeug.utils import secure_filename
@@ -8,6 +8,7 @@ from pdf2image import convert_from_path
 from PIL import Image
 import io
 from PyPDF2 import PdfWriter, PdfReader
+import time
 
 # Configure logging
 logging.basicConfig(level=logging.DEBUG)
@@ -27,13 +28,13 @@ def process_image(image):
         # Convert to grayscale
         gray = cv2.cvtColor(np.array(image), cv2.COLOR_RGB2GRAY)
         
-        # Apply adaptive thresholding
+        # Apply adaptive thresholding with more conservative parameters
         binary = cv2.adaptiveThreshold(
-            gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 21, 15
+            gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 11, 10
         )
         
-        # Denoise
-        denoised = cv2.fastNlMeansDenoising(binary)
+        # Light denoising
+        denoised = cv2.fastNlMeansDenoising(binary, None, 10, 7, 21)
         
         return Image.fromarray(denoised)
     except Exception as e:
@@ -43,25 +44,22 @@ def process_image(image):
 def process_pdf(input_path, output_path):
     try:
         logger.info(f"Processing PDF: {input_path}")
-        # Convert PDF to images
-        images = convert_from_path(input_path)
-        logger.info(f"Converted PDF to {len(images)} images")
         
-        # Process each page
-        processed_images = []
-        for i, image in enumerate(images):
-            logger.info(f"Processing page {i+1}")
-            processed_image = process_image(image)
-            processed_images.append(processed_image)
+        # Convert only first page as a test
+        images = convert_from_path(input_path, first_page=1, last_page=1)
+        logger.info(f"Converted first page of PDF")
         
-        # Save processed images as PDF
-        processed_images[0].save(
-            output_path,
-            save_all=True,
-            append_images=processed_images[1:],
-            format='PDF'
-        )
+        if not images:
+            raise Exception("Failed to convert PDF to images")
+        
+        # Process the first page
+        processed_image = process_image(images[0])
+        
+        # Save as PDF
+        processed_image.save(output_path, format='PDF')
         logger.info(f"Saved processed PDF to {output_path}")
+        
+        return True
     except Exception as e:
         logger.error(f"Error in process_pdf: {str(e)}")
         raise
@@ -75,18 +73,20 @@ def upload_file():
     try:
         if 'file' not in request.files:
             logger.error('No file part in request')
-            return 'No file uploaded', 400
+            return jsonify({'error': 'No file uploaded'}), 400
         
         file = request.files['file']
         if file.filename == '':
             logger.error('No selected file')
-            return 'No file selected', 400
+            return jsonify({'error': 'No file selected'}), 400
         
         if not file.filename.lower().endswith('.pdf'):
             logger.error('Invalid file type')
-            return 'Only PDF files are allowed', 400
+            return jsonify({'error': 'Only PDF files are allowed'}), 400
         
-        filename = secure_filename(file.filename)
+        # Generate unique filename
+        timestamp = int(time.time())
+        filename = f"{timestamp}_{secure_filename(file.filename)}"
         input_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
         output_path = os.path.join(app.config['PROCESSED_FOLDER'], f'processed_{filename}')
         
@@ -96,19 +96,28 @@ def upload_file():
         try:
             process_pdf(input_path, output_path)
             logger.info("File processed successfully")
-            return send_file(output_path, as_attachment=True)
+            return send_file(
+                output_path,
+                as_attachment=True,
+                download_name=f"enhanced_{os.path.basename(file.filename)}"
+            )
         except Exception as e:
             logger.error(f"Processing error: {str(e)}")
-            return f"Error processing file: {str(e)}", 500
+            return jsonify({'error': f"Error processing file: {str(e)}"}), 500
         finally:
             # Clean up
-            if os.path.exists(input_path):
-                os.remove(input_path)
-            if os.path.exists(output_path):
-                os.remove(output_path)
+            try:
+                if os.path.exists(input_path):
+                    os.remove(input_path)
+                if os.path.exists(output_path):
+                    os.remove(output_path)
+            except Exception as e:
+                logger.error(f"Cleanup error: {str(e)}")
+    
     except Exception as e:
         logger.error(f"Upload error: {str(e)}")
-        return f"Upload error: {str(e)}", 500
+        return jsonify({'error': f"Upload error: {str(e)}"}), 500
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000)), debug=True)
+    port = int(os.environ.get('PORT', 5000))
+    app.run(host='0.0.0.0', port=port)
