@@ -1,12 +1,20 @@
 services:
   - type: web
     name: luminapdf
-    env: python
+    runtime: python
     buildCommand: pip install -r requirements.txt
     startCommand: gunicorn app:app
     envVars:
       - key: PYTHON_VERSION
         value: 3.12.1
+      - key: PORT
+        value: 10000
     plan: free
+    branch: master
+    buildFilter:
+      paths:
+        - requirements.txt
+        - "**/*.py"
+        - templates/**
     preInstallCommand: |
       apt-get update && apt-get install -y poppler-utils
